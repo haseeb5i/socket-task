@@ -1,34 +1,49 @@
-import express from 'express';
-import morgan from 'morgan';
-import helmet from 'helmet';
-import cors from 'cors';
-import 'dotenv/config';
+import { createServer } from "node:http";
+import cors from "cors";
+import morgan from "morgan";
+import helmet from "helmet";
+import express, { NextFunction, Response } from "express";
+import "dotenv/config";
 
-import * as middlewares from './middlewares';
-import { v1Router } from './api';
-import { MessageResponse } from './interfaces/response';
+import * as middlewares from "./middlewares";
+import { io } from "./socket";
+import { v1Router } from "./routes";
+import { JwtPayload } from "./interfaces/models";
 
 const app = express();
 
-app.use(morgan('dev'));
+app.use(morgan("dev"));
 app.use(helmet());
 app.use(cors());
 app.use(express.json());
 
-app.get<{}, MessageResponse>('/', (req, res) => {
-  res.json({
-    message: '🦄🌈✨👋🌎🌍🌏✨🌈🦄',
-  });
-});
-
-app.use('/api/v1', v1Router);
+app.use("/api/v1", v1Router);
 
 app.use(middlewares.notFound);
 app.use(middlewares.errorHandler);
 
-const port = process.env.PORT || 5000;
-app.listen(port, () => {
-  /* eslint-disable no-console */
-  console.log(`Listening: http://localhost:${port}`);
-  /* eslint-enable no-console */
+const server = createServer(app);
+io.attach(server);
+
+io.engine.use((req: any, res: Response, next: NextFunction) => {
+  console.log("reveived request");
+  const isHandshake = req._query.sid === undefined;
+  if (!isHandshake) {
+    return next();
+  }
+
+  middlewares.authenticate(req, res, next);
 });
+
+const port = process.env.PORT || 8080;
+server.listen(port, () => {
+  console.log("Listening on http://localhost:8080");
+});
+
+declare global {
+  namespace Express {
+    interface Request {
+      user?: JwtPayload;
+    }
+  }
+}
